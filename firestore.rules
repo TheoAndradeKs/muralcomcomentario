@@ -1,0 +1,38 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function logado() { return request.auth != null; }
+    function meuPerfil() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid));
+    }
+    match /usuarios/{uid} {
+      allow read: if logado();
+      allow create: if logado() && request.auth.uid == uid &&
+        request.resource.data.keys().hasAll(['nome', 'email']);
+      allow update, delete: if logado() && request.auth.uid == uid;
+    }
+    match /publicacoes/{postId} {
+      allow read: if logado();
+      allow create: if logado() && request.resource.data.autorId == request.auth.uid;
+      allow update: if false;
+      allow delete: if logado() && resource.data.autorId == request.auth.uid;
+      match /comentarios/{comentarioId} {
+        allow read: if logado();
+        allow create: if logado() &&
+          exists(/databases/$(database)/documents/publicacoes/$(postId)) &&
+          exists(/databases/$(database)/documents/usuarios/$(request.auth.uid)) &&
+          request.resource.data.keys().hasOnly(['texto', 'autorNome', 'autorId', 'publicacaoId', 'data']) &&
+          request.resource.data.keys().hasAll(['texto', 'autorNome', 'autorId', 'publicacaoId', 'data']) &&
+          request.resource.data.autorId == request.auth.uid &&
+          request.resource.data.publicacaoId == postId &&
+          request.resource.data.autorNome == meuPerfil().data.nome &&
+          request.resource.data.texto is string &&
+          request.resource.data.texto.size() > 0 &&
+          request.resource.data.texto.size() <= 500 &&
+          request.resource.data.data == request.time;
+        allow update: if false;
+        allow delete: if logado() && resource.data.autorId == request.auth.uid;
+      }
+    }
+  }
+}
